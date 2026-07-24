@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Volume Health Analysis Agent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+<div class="dashboard-main">
+
+    <!-- Alert Banner -->
+    <div id="alert-banner" class="alert-banner hidden"></div>
+
+    <!-- ===== KPI STRIP ===== -->
+    <div class="kpi-strip">
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-icon-purple">&#128190;</div>
+            <div class="kpi-body">
+                <div class="kpi-label">Total Drives</div>
+                <div id="kpi-total" class="kpi-value kpi-purple">—</div>
+                <div class="kpi-sub">drives scanned</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-icon-red">&#128308;</div>
+            <div class="kpi-body">
+                <div class="kpi-label">Critical</div>
+                <div id="kpi-critical" class="kpi-value kpi-red">—</div>
+                <div class="kpi-sub">at or above 90%</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-icon-amber">&#128993;</div>
+            <div class="kpi-body">
+                <div class="kpi-label">Moderate</div>
+                <div id="kpi-moderate" class="kpi-value kpi-amber">—</div>
+                <div class="kpi-sub">between 60–89%</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon kpi-icon-green">&#128994;</div>
+            <div class="kpi-body">
+                <div class="kpi-label">Healthy</div>
+                <div id="kpi-healthy" class="kpi-value kpi-green">—</div>
+                <div class="kpi-sub">below 60%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ROW 1: TC Volume · Most Used · Available Drives ===== -->
+    <div class="cards-row" style="grid-template-columns: 1fr 1fr">
+
+        <!-- Active TC Volume -->
+        <div id="tc-volume-card" class="card">
+            <div class="card-header">
+                <span class="card-icon">&#128191;</span>
+                <span class="card-title">Active TC Volume</span>
+                <span class="sect-badge sb-blue" style="margin-left:auto">Teamcenter</span>
+            </div>
+            <div class="card-body">
+                <div id="tc-vol-name" class="drive-name-heading">—</div>
+                <div id="tc-vol-stats" class="stats-grid" style="display:none">
+                    <div class="stat-cell"><div class="stat-label">Used</div><div id="tc-vol-used"  class="stat-value"></div></div>
+                    <div class="stat-cell"><div class="stat-label">Total</div><div id="tc-vol-total" class="stat-value"></div></div>
+                    <div class="stat-cell"><div class="stat-label">Free</div><div id="tc-vol-free"  class="stat-value"></div></div>
+                    <div class="stat-cell"><div class="stat-label">Usage</div><div id="tc-vol-pct"   class="stat-value"></div></div>
+                </div>
+                <div class="progress-track" id="tc-vol-bar-wrap" style="display:none">
+                    <div id="tc-vol-bar" class="progress-fill"></div>
+                </div>
+                <div id="tc-vol-badge" style="text-align:center"></div>
+            </div>
+        </div>
+
+        <!-- Available Drives -->
+        <div id="available-drives-card" class="card">
+            <div class="card-header">
+                <span class="card-icon">&#9989;</span>
+                <span class="card-title">Available Drives</span>
+                <span class="sect-badge sb-green" style="margin-left:auto">Below 60%</span>
+            </div>
+            <div class="card-body scrollable-body">
+                <div id="available-drives-list"></div>
+                <div id="available-drives-status" class="status-footer"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ===== ROW 2: All Drives + Donut ===== -->
+    <div class="cards-row" style="grid-template-columns: 1fr 300px">
+
+        <!-- All Drives Overview -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">&#128421;</span>
+                <span class="card-title">All Drives Overview</span>
+                <span class="sect-badge sb-purple" style="margin-left:auto">Drive Inventory</span>
+            </div>
+            <div class="card-body" id="all-drives-body"></div>
+        </div>
+
+        <!-- Utilization Split -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-icon">&#128202;</span>
+                <span class="card-title">Utilization Split</span>
+            </div>
+            <div class="card-body util-split-body">
+
+                <!-- Stacked bar -->
+                <div class="util-bar-label">Health Distribution</div>
+                <div class="util-stacked-bar" id="util-stacked-bar">
+                    <div class="util-seg util-seg-critical" id="useg-critical" title="Critical"></div>
+                    <div class="util-seg util-seg-moderate" id="useg-moderate" title="Moderate"></div>
+                    <div class="util-seg util-seg-healthy"  id="useg-healthy"  title="Healthy"></div>
+                </div>
+                <div class="util-bar-ticks" id="util-bar-ticks"></div>
+
+                <!-- Three metric tiles -->
+                <div class="util-metrics">
+                    <div class="util-metric util-metric-critical">
+                        <div class="util-metric-num" id="um-critical">—</div>
+                        <div class="util-metric-pct" id="ump-critical"></div>
+                        <div class="util-metric-label">Critical</div>
+                        <div class="util-metric-sub">&ge; 90%</div>
+                    </div>
+                    <div class="util-metric util-metric-moderate">
+                        <div class="util-metric-num" id="um-moderate">—</div>
+                        <div class="util-metric-pct" id="ump-moderate"></div>
+                        <div class="util-metric-label">Moderate</div>
+                        <div class="util-metric-sub">60 – 89%</div>
+                    </div>
+                    <div class="util-metric util-metric-healthy">
+                        <div class="util-metric-num" id="um-healthy">—</div>
+                        <div class="util-metric-pct" id="ump-healthy"></div>
+                        <div class="util-metric-label">Healthy</div>
+                        <div class="util-metric-sub">&lt; 60%</div>
+                    </div>
+                </div>
+
+                <!-- Total row -->
+                <div class="util-total-row">
+                    <span class="util-total-label">Total drives scanned</span>
+                    <span class="util-total-val" id="util-total">—</span>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ===== ROW 3: Switch Log ===== -->
+    <div class="card" id="switch-log-card">
+        <div class="card-header">
+            <span class="card-icon">&#128221;</span>
+            <span class="card-title">Volume Switch Log</span>
+            <button class="sect-badge sb-amber btn-report" style="margin-left:auto" onclick="openModal('switchModal')">
+                &#9974;&#65039; Expand
+            </button>
+        </div>
+        <div class="card-body scrollable-body">
+            <pre id="switch-log-content" class="report-pre"></pre>
+        </div>
+    </div>
+
+    <!-- ===== ROW 4: Switch History ===== -->
+    <div class="card" id="switch-history-card">
+        <div class="card-header">
+            <span class="card-icon">&#128336;</span>
+            <span class="card-title">Volume Switch History</span>
+            <button class="sect-badge sb-purple btn-report" style="margin-left:auto" onclick="openHistoryModal()">
+                &#9974;&#65039; Expand
+            </button>
+        </div>
+        <div class="card-body scrollable-body">
+            <pre id="switch-history-content" class="report-pre"></pre>
+        </div>
+    </div>
+
+    <!-- ===== ROW 5: Trend Chart ===== -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-icon">&#128200;</span>
+            <span class="card-title">Drive Usage Trend</span>
+            <span class="sect-badge sb-cyan" style="margin-left:auto">Historical</span>
+        </div>
+        <div class="card-body">
+            <div id="trend-filters" class="trend-filter-bar"></div>
+            <svg id="usageTrendChart" class="trend-svg"></svg>
+            <div id="usageLegend" class="trend-legend"></div>
+            <div id="trendStatsTable" class="trend-stats-wrap"></div>
+        </div>
+    </div>
+
+</div><!-- end .dashboard-main -->
+
+<!-- Switch Log Modal -->
+<div id="switchModal" class="modal-overlay hidden" onclick="closeModal('switchModal',event)">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title">Volume Switch Log</span>
+            <button class="modal-close" onclick="closeModal('switchModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="switch-modal-content" class="report-pre"></pre>
+        </div>
+    </div>
+</div>
+
+<!-- Switch History Modal -->
+<div id="switchHistoryModal" class="modal-overlay hidden" onclick="closeModal('switchHistoryModal',event)">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title">Volume Switch History</span>
+            <button class="modal-close" onclick="closeModal('switchHistoryModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="switch-history-modal-content" class="report-pre"></pre>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

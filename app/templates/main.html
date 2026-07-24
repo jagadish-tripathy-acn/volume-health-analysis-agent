@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Health Analysis Agent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/script.js') }}" defer></script>
+</head>
+<body>
+    <header class="main-header">
+        <div class="header-inner">
+            <div class="header-logo">
+                <div class="header-icon-wrap">&#128190;</div>
+                <div class="header-title-group">
+                    <h1>Volume Health Analysis Agent</h1>
+                    <p class="tagline">Local Drive Monitoring &nbsp;&middot;&nbsp; Teamcenter Volume Tracking &nbsp;&middot;&nbsp; Auto-Switch on Critical Usage</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <span class="last-update" id="last-update-header"></span>
+                <button class="btn-refresh" id="refresh-btn" onclick="refreshDashboard()" title="Refresh dashboard data">
+                    <span id="refresh-icon">&#8635;</span> Refresh
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main id="dynamic-content" class="main-content"></main>
+
+    <script>
+        window.addEventListener('load', () => {
+            fetch('/home')
+                .then(r => r.text())
+                .then(html => {
+                    document.getElementById('dynamic-content').innerHTML = html;
+                    initDashboard();
+                });
+        });
+    </script>
+</body>
+</html>
