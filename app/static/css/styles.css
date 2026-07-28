@@ -843,6 +843,250 @@ body {
 }
 
 /* ============================================================
+   AI AGENT SUMMARY CARD
+   ============================================================ */
+
+/* Generate Summary button */
+.btn-generate-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(124,92,252,0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(124,92,252,0.35);
+  border-radius: 7px;
+  padding: 6px 16px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+.btn-generate-summary:hover:not(:disabled) {
+  background: rgba(124,92,252,0.28);
+  color: #c4b5fd;
+}
+.btn-generate-summary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-generate-summary.generating #generate-summary-icon {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Empty state */
+.agent-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 20px;
+  gap: 8px;
+}
+.agent-empty-icon { font-size: 2rem; opacity: 0.4; }
+.agent-empty-text {
+  font-size: 0.90rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.agent-empty-sub {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Generating / error inline messages */
+.agent-generating-msg {
+  padding: 28px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.agent-error-msg {
+  padding: 16px;
+  text-align: center;
+  font-size: 0.80rem;
+  color: var(--red);
+  background: rgba(239,68,68,0.06);
+  border-radius: var(--radius);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+
+/* Timestamp shown in card header */
+.agent-summary-ts {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-left: 12px;
+  font-style: italic;
+}
+
+/* Overall health rating banner */
+.agent-rating-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 18px;
+  border: 1px solid;
+}
+.agent-rating-banner.rating-healthy {
+  background: rgba(34,197,94,0.08);
+  border-color: rgba(34,197,94,0.3);
+}
+.agent-rating-banner.rating-warning {
+  background: rgba(245,158,11,0.08);
+  border-color: rgba(245,158,11,0.3);
+}
+.agent-rating-banner.rating-critical {
+  background: rgba(239,68,68,0.08);
+  border-color: rgba(239,68,68,0.3);
+}
+.agent-rating-banner.rating-unknown {
+  background: rgba(124,92,252,0.08);
+  border-color: rgba(124,92,252,0.3);
+}
+.agent-rating-icon { font-size: 1.2rem; }
+.agent-rating-label {
+  font-size: 0.70rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.agent-rating-value {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin-left: auto;
+}
+.rating-healthy  .agent-rating-value { color: var(--green); }
+.rating-warning  .agent-rating-value { color: var(--amber); }
+.rating-critical .agent-rating-value { color: var(--red);   }
+.rating-unknown  .agent-rating-value { color: var(--purple); }
+
+/* Sections grid layout */
+.agent-summary-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+/* Rating banner spans full width */
+.agent-summary-content .agent-rating-banner {
+  grid-column: 1 / -1;
+}
+
+/* Individual section block */
+.agent-section {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.agent-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+.agent-section-icon { font-size: 0.9rem; }
+.agent-section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+.agent-section-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Key: Value rows */
+.agent-kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.78rem;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.agent-kv-row:last-child { border-bottom: none; }
+.agent-kv-key {
+  color: var(--text-secondary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.agent-kv-val {
+  color: var(--text-primary);
+  font-weight: 700;
+  text-align: right;
+}
+.aval-critical { color: var(--red); }
+.aval-warning  { color: var(--amber); }
+.aval-healthy  { color: var(--green); }
+.aval-ok       { color: var(--green); }
+
+/* List items (recommendations / anomalies) */
+.agent-list-item {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  padding: 3px 0 3px 14px;
+  position: relative;
+  line-height: 1.5;
+}
+.agent-list-item::before {
+  content: '›';
+  position: absolute;
+  left: 0;
+  color: var(--purple);
+  font-weight: 700;
+}
+
+/* Plain text lines */
+.agent-text-line {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Fallback raw text */
+.agent-raw-text {
+  font-size: 0.74rem;
+  font-family: 'Consolas', monospace;
+  color: #a8b4d0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+/* Recommendations section spans full width */
+.agent-section:has(.agent-section-title) {
+  /* wide sections override via JS if needed */
+}
+
+/* Make Anomalies and Recommendations full-width */
+@supports selector(:has(*)) {
+  .agent-summary-content .agent-section:nth-child(n+4) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Responsive: single column on narrow screens */
+@media (max-width: 700px) {
+  .agent-summary-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
    LOGIN PAGE  (kept for reference, not used in no-auth mode)
    ============================================================ */
 .login-page-container {

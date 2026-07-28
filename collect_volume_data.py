@@ -1,10 +1,14 @@
 """
 Step 1 of Volume Health Analysis Agent.
 
-- Reads all local drives via psutil → VOLUME_USAGE_REPORT.txt
-- Appends a timestamped snapshot to output_usage_history.txt
-- Invokes Find_Volume_InUse.exe (Teamcenter ITK utility) to discover the
-  currently active TC volume → OUTPUT_Find_Volume_inUse.txt
+- Reads volume directory paths from volume_path_list.txt
+- For each path:
+    used_gb  = recursive size of that directory
+    total_gb = total capacity of the drive the directory lives on
+    free_gb  = total_gb - used_gb   (how much of the drive remains for this volume)
+    percent  = used_gb / total_gb * 100
+- Writes results to VOLUME_USAGE_REPORT.txt and appends to output_usage_history.txt
+- Invokes Find_Volume_InUse.exe to discover the currently active TC volume
 """
 import os
 import subprocess
@@ -12,13 +16,13 @@ import time
 import configparser
 import psutil
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "config.ini")
-DATA_DIR    = os.path.join(BASE_DIR, "data")
-REPORT_FILE = os.path.join(DATA_DIR, "VOLUME_USAGE_REPORT.txt")
-HISTORY_FILE = os.path.join(DATA_DIR, "output_usage_history.txt")
-# Local copy of the exe output — so the rest of the pipeline reads from data/
+BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE      = os.path.join(BASE_DIR, "config.ini")
+DATA_DIR         = os.path.join(BASE_DIR, "data")
+REPORT_FILE      = os.path.join(DATA_DIR, "VOLUME_USAGE_REPORT.txt")
+HISTORY_FILE     = os.path.join(DATA_DIR, "output_usage_history.txt")
 CURRENT_VOL_FILE = os.path.join(DATA_DIR, "OUTPUT_Find_Volume_inUse.txt")
+PATH_LIST_FILE   = os.path.join(BASE_DIR, "volume_path_list.txt")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -33,27 +37,86 @@ def bytes_to_gb(b):
     return round(b / (1024 ** 3), 2)
 
 
-# ---- Local drive collection ------------------------------------------------
+# ---- Volume path list -------------------------------------------------------
+
+def load_volume_paths():
+    """Return list of volume directory paths from volume_path_list.txt."""
+    if not os.path.exists(PATH_LIST_FILE):
+        raise FileNotFoundError(
+            f"volume_path_list.txt not found at: {PATH_LIST_FILE}"
+        )
+    paths = []
+    with open(PATH_LIST_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            p = line.strip()
+            if p and not p.startswith("#"):
+                paths.append(p)
+    return paths
+
+
+# ---- Directory size ---------------------------------------------------------
+
+# ---- Drive root for a path --------------------------------------------------
+
+def _drive_root(path):
+    """
+    Return the drive root for a path.
+    Windows: C:\Jagadish\volumes\DefaultVolume  →  C:\
+    POSIX:   /mnt/tc/volumes/DefaultVolume      →  /
+    """
+    return os.path.splitdrive(os.path.abspath(path))[0] + os.sep
+
+
+# ---- Collect volume data ----------------------------------------------------
 
 def collect_drives():
-    partitions = psutil.disk_partitions(all=False)
-    rows = []
-    for p in partitions:
+    """
+    For each path in volume_path_list.txt:
+      name     = folder basename  (e.g. DefaultVolume)
+      used_gb  = used space on the host drive  (e.g. C:\)
+      total_gb = total capacity of the host drive
+      free_gb  = free space on the host drive
+      percent  = host drive usage %
+    The folder name is used as the volume identifier throughout the pipeline.
+    """
+    paths = load_volume_paths()
+    rows  = []
+
+    for vol_path in paths:
+        vol_path   = os.path.normpath(vol_path)
+        name       = os.path.basename(vol_path)
+        drive_root = _drive_root(vol_path)
+
         try:
-            usage = psutil.disk_usage(p.mountpoint)
-        except PermissionError:
+            disk = psutil.disk_usage(drive_root)
+        except (OSError, PermissionError) as e:
+            print(f"[WARN] Could not read drive stats for {drive_root}: {e}")
             continue
-        label = p.mountpoint.replace("\\", "").replace("/", "").strip(":") or p.device
+
+        # Derive fstype from partition list
+        fstype = ""
+        try:
+            for part in psutil.disk_partitions(all=False):
+                p_root = _drive_root(part.mountpoint or part.device)
+                if os.path.normcase(p_root) == os.path.normcase(drive_root):
+                    fstype = part.fstype
+                    break
+        except Exception:
+            pass
+
         rows.append({
-            "name":       label,
-            "device":     p.device,
-            "mountpoint": p.mountpoint,
-            "fstype":     p.fstype,
-            "total_gb":   bytes_to_gb(usage.total),
-            "used_gb":    bytes_to_gb(usage.used),
-            "free_gb":    bytes_to_gb(usage.free),
-            "percent":    round(usage.percent, 2),
+            "name":       name,
+            "device":     drive_root,
+            "mountpoint": vol_path,
+            "fstype":     fstype,
+            "total_gb":   bytes_to_gb(disk.total),
+            "used_gb":    bytes_to_gb(disk.used),
+            "free_gb":    bytes_to_gb(disk.free),
+            "percent":    round(disk.percent, 2),
         })
+
+        print(f"[OK] {name}: {disk.percent}% used  ({bytes_to_gb(disk.used)}G / {bytes_to_gb(disk.total)}G)  drive: {drive_root}")
+
     return rows
 
 
@@ -68,7 +131,7 @@ def write_report(rows):
                 f"{r['name']} | {r['total_gb']}G | {r['used_gb']}G | "
                 f"{r['percent']}% | {r['free_gb']}G | {r['fstype']} | {r['mountpoint']}\n"
             )
-    print(f"[OK] Drive report written: {REPORT_FILE}")
+    print(f"[OK] Volume report written: {REPORT_FILE}")
 
 
 def append_history(rows):
@@ -82,17 +145,12 @@ def append_history(rows):
 # ---- Teamcenter active-volume discovery ------------------------------------
 
 def run_find_volume_exe():
-    """
-    Invokes Find_Volume_InUse.exe to discover the currently active TC volume.
-    Copies the output file to data/ so all pipeline steps read from one place.
-    Returns the volume name string, or None on failure.
-    """
-    cfg = _load_config()
-    exe_path      = cfg.get("paths", "find_volume_exe", fallback="")
-    exe_output    = cfg.get("paths", "find_volume_output", fallback="")
-    tc_user       = cfg.get("teamcenter", "tc_user",     fallback="")
-    tc_password   = cfg.get("teamcenter", "tc_password", fallback="")
-    tc_group      = cfg.get("teamcenter", "tc_group",    fallback="")
+    cfg          = _load_config()
+    exe_path     = cfg.get("paths", "find_volume_exe",    fallback="")
+    exe_output   = cfg.get("paths", "find_volume_output", fallback="")
+    tc_user      = cfg.get("teamcenter", "tc_user",       fallback="")
+    tc_password  = cfg.get("teamcenter", "tc_password",   fallback="")
+    tc_group     = cfg.get("teamcenter", "tc_group",      fallback="")
 
     if not exe_path or not os.path.exists(exe_path):
         print(f"[WARN] Find_Volume_InUse.exe not found at: {exe_path}")
@@ -101,7 +159,7 @@ def run_find_volume_exe():
         return None
 
     cmd = [exe_path, f"-u={tc_user}", f"-p={tc_password}", f"-g={tc_group}"]
-    print(f"[...] Running Find_Volume_InUse.exe ...")
+    print("[...] Running Find_Volume_InUse.exe ...")
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -113,10 +171,7 @@ def run_find_volume_exe():
     except Exception as e:
         print(f"[WARN] Find_Volume_InUse.exe error: {e}")
 
-    # Read the volume name from the exe's own output file
     volume_name = _read_exe_output(exe_output)
-
-    # Mirror into data/ so the rest of the pipeline has a single source
     _write_current_volume(volume_name or "UNKNOWN")
 
     if volume_name:
@@ -141,16 +196,21 @@ def _write_current_volume(name):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  Step 1: Collecting local drive data")
+    print("  Step 1: Collecting volume directory data")
     print("=" * 60)
 
-    rows = collect_drives()
+    try:
+        rows = collect_drives()
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}")
+        raise SystemExit(1)
+
     if not rows:
-        print("[WARN] No accessible drives found.")
+        print("[WARN] No volume paths found in volume_path_list.txt.")
     else:
         write_report(rows)
         append_history(rows)
-        print(f"[OK] {len(rows)} drive(s) collected.")
+        print(f"[OK] {len(rows)} volume(s) collected.")
 
     print()
     print("=" * 60)

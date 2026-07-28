@@ -1,1 +1,1 @@
-[SUCCESS] Retrieved current volume: a_vol_000
+[SUCCESS] Retrieved current volume: DefaultVolume

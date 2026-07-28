@@ -1,6 +1,6 @@
 ======================================================================
      VOLUME HEALTH ANALYSIS REPORT
-     Generated : 23-Jul-2026 11:33 PM
+     Generated : 28-Jul-2026 08:33 PM
 ======================================================================
 
   Total Drives Scanned : 1
@@ -8,15 +8,15 @@
   Moderate (60-89%) : 0
   Healthy  (<  60%)    : 1
 
-  Active TC Volume     : a_vol_000
-  Volume Switch        : [SKIP] Volume 'a_vol_000' not found in local drive report — it may be a network/TC-managed volume not visible to psutil.
+  Active TC Volume     : DefaultVolume
+  Volume Switch        : [OK] Current volume 'DefaultVolume' is at 42.3% — no switch needed.
 
 ======================================================================
 
   [OK] HEALTHY DRIVES
 
-  Drive     : C  (C:\)
-  Usage     : 44.6%   Used: 104.92G   Total: 235.48G   Free: 130.56G
+  Drive     : DefaultVolume  (C:\Jagadish\volumes\DefaultVolume) <-- ACTIVE TC VOLUME
+  Usage     : 42.3%   Used: 99.61G   Total: 235.48G   Free: 135.87G
 
 ======================================================================
   END OF REPORT

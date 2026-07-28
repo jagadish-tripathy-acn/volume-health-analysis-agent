@@ -47,6 +47,29 @@
         </div>
     </div>
 
+    <!-- ===== AI AGENT SUMMARY ===== -->
+    <div class="card" id="agent-summary-card">
+        <div class="card-header">
+            <span class="card-icon">&#129302;</span>
+            <span class="card-title">AI Health Summary</span>
+            <span class="sect-badge sb-purple" style="margin-left:auto">Claude Sonnet</span>
+            <span id="agent-summary-generated" class="agent-summary-ts"></span>
+        </div>
+        <div class="card-header" style="border-top:1px solid var(--border); background:transparent; justify-content:flex-end; padding:10px 18px">
+            <button class="btn-generate-summary" id="btn-generate-summary" onclick="generateAgentSummary()">
+                <span id="generate-summary-icon">&#9889;</span> Generate Summary
+            </button>
+        </div>
+        <div class="card-body" id="agent-summary-body">
+            <div id="agent-summary-content" class="agent-summary-content"></div>
+            <div id="agent-summary-empty" class="agent-empty-state hidden">
+                <div class="agent-empty-icon">&#129302;</div>
+                <div class="agent-empty-text">No summary yet</div>
+                <div class="agent-empty-sub">Click <strong>Generate Summary</strong> above to run the Claude agent</div>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== ROW 1: TC Volume · Most Used · Available Drives ===== -->
     <div class="cards-row" style="grid-template-columns: 1fr 1fr">
 

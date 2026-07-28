@@ -1,10 +1,15 @@
 import os
+import sys
 import time
 
+from dotenv import load_dotenv
 from flask import Flask, render_template, jsonify
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR  = os.path.join(BASE_DIR, "data")
+sys.path.insert(0, BASE_DIR)
 
 REPORT_FILE      = os.path.join(DATA_DIR, "VOLUME_USAGE_REPORT.txt")
 HISTORY_FILE     = os.path.join(DATA_DIR, "output_usage_history.txt")
@@ -12,6 +17,7 @@ HEALTH_FILE      = os.path.join(DATA_DIR, "OUTPUT_health_report.txt")
 CURRENT_VOL_FILE = os.path.join(DATA_DIR, "OUTPUT_Find_Volume_inUse.txt")
 SWITCH_LOG_FILE      = os.path.join(DATA_DIR, "OUTPUT_switch_log.txt")
 SWITCH_HISTORY_FILE  = os.path.join(DATA_DIR, "OUTPUT_switch_history.txt")
+AGENT_SUMMARY_FILE   = os.path.join(DATA_DIR, "OUTPUT_agent_summary.txt")
 
 THRESHOLD_CRITICAL = 90
 THRESHOLD_MODERATE = 60
@@ -183,6 +189,43 @@ def get_usage_history():
     with open(HISTORY_FILE, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     return jsonify({"data": content})
+
+
+@app.route("/collect_volume_data", methods=["POST"])
+def collect_volume_data():
+    """Collect fresh volume data independently of run_analysis.bat."""
+    try:
+        import collect_volume_data as cvd
+        rows = cvd.collect_drives()
+        if not rows:
+            return jsonify({"ok": False, "error": "No volume paths found in volume_path_list.txt"})
+        cvd.write_report(rows)
+        cvd.append_history(rows)
+        cvd.run_find_volume_exe()
+        return jsonify({"ok": True, "volumes": len(rows)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/get_agent_summary")
+def get_agent_summary():
+    """Latest AI-generated health summary from agent_runner.py."""
+    if not os.path.exists(AGENT_SUMMARY_FILE):
+        return jsonify({"data": "", "exists": False})
+    with open(AGENT_SUMMARY_FILE, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    return jsonify({"data": content, "exists": True})
+
+
+@app.route("/run_agent_summary", methods=["POST"])
+def run_agent_summary():
+    """Run the Claude agent and return the generated summary."""
+    try:
+        from agent_runner import run_agent
+        summary = run_agent()
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/get_alert_message")

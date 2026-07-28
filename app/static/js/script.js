@@ -2,16 +2,27 @@
    Volume Health Analysis Agent — Dashboard Script
    ============================================================ */
 
-function initDashboard() {
+async function initDashboard() {
+    // Collect fresh volume data first, then render all widgets
+    await collectVolumeData();
     loadLastUpdate();
     loadAlertBanner();
-    loadKpiStrip();         // fills kpi-strip + triggers donut
+    loadKpiStrip();
+    loadAgentSummary();
     loadCurrentVolume();
     loadAvailableDrives();
     loadAllDrives();
     loadSwitchLog();
     loadSwitchHistory();
     loadUsageTrend();
+}
+
+async function collectVolumeData() {
+    try {
+        await fetch('/collect_volume_data', { method: 'POST' });
+    } catch (e) {
+        console.warn('Volume data collection failed:', e);
+    }
 }
 
 /* ---- Classify -------------------------------------------- */
@@ -51,6 +62,217 @@ async function refreshDashboard() {
     btn.disabled = false;
     btn.classList.remove('refreshing');
     icon.textContent = '↻';
+}
+
+/* ---- Agent Summary --------------------------------------- */
+async function loadAgentSummary() {
+    const d       = await fetch('/get_agent_summary').then(r => r.json());
+    const content = document.getElementById('agent-summary-content');
+    const empty   = document.getElementById('agent-summary-empty');
+    const card    = document.getElementById('agent-summary-card');
+    const tsEl    = document.getElementById('agent-summary-generated');
+
+    if (!d.exists || !d.data.trim()) {
+        if (content) content.classList.add('hidden');
+        if (empty)   empty.classList.remove('hidden');
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+
+    const raw   = d.data;
+    const lines = raw.split('\n');
+
+    // Extract "Generated:" timestamp from first line written by agent_runner
+    let bodyLines = lines;
+    if (lines[0] && lines[0].startsWith('Generated:')) {
+        if (tsEl) tsEl.textContent = lines[0];
+        bodyLines = lines.slice(2);   // skip "Generated:" line and blank line
+    }
+
+    const body = bodyLines.join('\n').trim();
+
+    // Parse the overall rating for the card accent colour
+    const ratingMatch = body.match(/OVERALL HEALTH RATING\s*[:\-–]\s*(\w+)/i);
+    const rating      = ratingMatch ? ratingMatch[1].toLowerCase() : 'unknown';
+    const ratingColor = rating === 'critical' ? 'var(--red)'
+                      : rating === 'warning'  ? 'var(--amber)'
+                      : rating === 'watch'    ? 'var(--amber)'
+                      : rating === 'healthy'  ? 'var(--green)'
+                      : 'var(--purple)';
+    if (card) card.style.borderTopColor = ratingColor;
+
+    // Render structured sections
+    const SECTIONS = [
+        'OVERALL HEALTH RATING',
+        'ACTIVE TC VOLUME',
+        'ALL DRIVES',
+        'ANOMALIES DETECTED',
+        'ACTIONS TAKEN',
+        'RECOMMENDATIONS',
+    ];
+
+    const SECTION_META = {
+        'OVERALL HEALTH RATING': { icon: '🩺', badge: null },
+        'ACTIVE TC VOLUME':      { icon: '💾', badge: 'sb-blue' },
+        'ALL DRIVES':            { icon: '🖥',  badge: 'sb-purple' },
+        'ANOMALIES DETECTED':    { icon: '⚠️', badge: 'sb-amber' },
+        'ACTIONS TAKEN':         { icon: '⚡', badge: 'sb-cyan' },
+        'RECOMMENDATIONS':       { icon: '📋', badge: 'sb-green' },
+    };
+
+    // Split body into named sections
+    const sectionMap = {};
+    let currentSection = null;
+    let currentLines   = [];
+
+    body.split('\n').forEach(line => {
+        const matchedSection = SECTIONS.find(s =>
+            line.trim().toUpperCase().startsWith(s)
+        );
+        if (matchedSection) {
+            if (currentSection) sectionMap[currentSection] = currentLines.join('\n').trim();
+            currentSection = matchedSection;
+            // Capture any text after the heading colon on the same line
+            const colonIdx = line.indexOf(':');
+            currentLines   = colonIdx >= 0 ? [line.slice(colonIdx + 1).trim()] : [];
+        } else if (currentSection) {
+            currentLines.push(line);
+        }
+    });
+    if (currentSection) sectionMap[currentSection] = currentLines.join('\n').trim();
+
+    // Build HTML
+    let html = '';
+
+    // Overall rating banner
+    const overallText = sectionMap['OVERALL HEALTH RATING'] || rating.toUpperCase();
+    const ratingClass = rating === 'critical' ? 'rating-critical'
+                      : (rating === 'warning' || rating === 'watch') ? 'rating-warning'
+                      : rating === 'healthy' ? 'rating-healthy'
+                      : 'rating-unknown';
+    html += `<div class="agent-rating-banner ${ratingClass}">
+        <span class="agent-rating-icon">🩺</span>
+        <span class="agent-rating-label">Overall Health</span>
+        <span class="agent-rating-value">${_esc(overallText)}</span>
+    </div>`;
+
+    // Remaining sections as collapsible blocks
+    const renderSections = ['ACTIVE TC VOLUME', 'ALL DRIVES', 'ANOMALIES DETECTED', 'ACTIONS TAKEN', 'RECOMMENDATIONS'];
+    renderSections.forEach(sec => {
+        const text = sectionMap[sec];
+        if (!text) return;
+        const meta = SECTION_META[sec] || { icon: '•', badge: null };
+        const badgeHtml = meta.badge
+            ? `<span class="sect-badge ${meta.badge}" style="margin-left:auto;font-size:0.62rem">${sec}</span>`
+            : '';
+        const formattedText = _formatSummaryText(text, sec);
+        html += `
+        <div class="agent-section">
+            <div class="agent-section-head">
+                <span class="agent-section-icon">${meta.icon}</span>
+                <span class="agent-section-title">${sec}</span>
+                ${badgeHtml}
+            </div>
+            <div class="agent-section-body">${formattedText}</div>
+        </div>`;
+    });
+
+    // Fallback: if no sections were found, render raw text
+    if (!Object.keys(sectionMap).length) {
+        html += `<pre class="agent-raw-text">${_esc(body)}</pre>`;
+    }
+
+    if (content) {
+        content.innerHTML = html;
+        content.classList.remove('hidden');
+    }
+}
+
+function _esc(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _formatSummaryText(text, section) {
+    const lines = text.split('\n');
+    let html = '';
+    lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        // Bullet / list item lines (start with -, •, *, number.)
+        if (/^[-•*]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) {
+            // Highlight drive names like C:, D:, or VOLUME_NAME
+            const content = _esc(trimmed.replace(/^[-•*\d.]\s*/, ''));
+            html += `<div class="agent-list-item">${content}</div>`;
+            return;
+        }
+
+        // Key: Value lines
+        if (/^[A-Za-z ]+\s*:/.test(trimmed)) {
+            const colonIdx = trimmed.indexOf(':');
+            const key      = _esc(trimmed.slice(0, colonIdx).trim());
+            const val      = _esc(trimmed.slice(colonIdx + 1).trim());
+            if (val) {
+                const valClass = _summaryValueClass(val);
+                html += `<div class="agent-kv-row">
+                    <span class="agent-kv-key">${key}</span>
+                    <span class="agent-kv-val ${valClass}">${val}</span>
+                </div>`;
+                return;
+            }
+        }
+
+        // Plain text
+        html += `<div class="agent-text-line">${_esc(trimmed)}</div>`;
+    });
+    return html || `<div class="agent-text-line">${_esc(text)}</div>`;
+}
+
+function _summaryValueClass(val) {
+    const v = val.toUpperCase();
+    if (v.includes('CRITICAL'))  return 'aval-critical';
+    if (v.includes('WARNING') || v.includes('WATCH')) return 'aval-warning';
+    if (v.includes('HEALTHY'))   return 'aval-healthy';
+    if (v.includes('PERFORMED') || v.includes('SWITCHED')) return 'aval-warning';
+    if (v.includes('NO SWITCH') || v.includes('NOT REQUIRED') || v.includes('NO ACTION')) return 'aval-ok';
+    if (v.includes('NONE') || v.includes('NO ANOMAL')) return 'aval-ok';
+    return '';
+}
+
+async function generateAgentSummary() {
+    const btn  = document.getElementById('btn-generate-summary');
+    const icon = document.getElementById('generate-summary-icon');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.classList.add('generating');
+    if (icon) icon.textContent = '⟳';
+
+    // Show a spinner in the card body while waiting
+    const content = document.getElementById('agent-summary-content');
+    const empty   = document.getElementById('agent-summary-empty');
+    if (content) content.innerHTML = '<div class="agent-generating-msg">&#129302;&nbsp; Claude is analysing your volumes&hellip;</div>';
+    if (content) content.classList.remove('hidden');
+    if (empty)   empty.classList.add('hidden');
+
+    try {
+        const resp = await fetch('/run_agent_summary', { method: 'POST' });
+        const d    = await resp.json();
+        if (d.ok) {
+            await loadAgentSummary();   // re-render with fresh file
+        } else {
+            if (content) content.innerHTML =
+                `<div class="agent-error-msg">&#10060;&nbsp; Agent error: ${_esc(d.error || 'Unknown error')}</div>`;
+        }
+    } catch (err) {
+        if (content) content.innerHTML =
+            `<div class="agent-error-msg">&#10060;&nbsp; Request failed: ${_esc(String(err))}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove('generating');
+        if (icon) icon.textContent = '⚡';
+    }
 }
 
 /* ---- Last Update ----------------------------------------- */

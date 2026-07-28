@@ -1,1 +1,1 @@
-a_vol_000
+DefaultVolume
